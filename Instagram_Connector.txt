@@ -1,0 +1,87 @@
+
+section Instagram_Connector;
+
+// Data Source Kind description
+Instagram_Connector = [
+    Authentication = [
+        Implicit = []
+    ],
+    Label = "cambiando el nombre para ver donde impacta"
+];
+
+// Data Source UI publishing description
+Instagram_Connector.Publish = [
+    Beta = true,
+    Category = "Other",
+    ButtonText = { "NOMBRE-DEL-CONECTOR-EN-GET-DATA", "ID-DEL-CONECTOR" }
+];
+
+[DataSource.Kind="Instagram_Connector"]
+shared Instagram_Connector.Feed = Value.ReplaceType(Instagram_ConnectorImpl, type function (url as Uri.Type) as any);
+
+[DataSource.Kind="Instagram_Connector", Publish="Instagram_Connector.Publish"]
+shared Instagram_Connector.Contents =  Value.ReplaceType(Instagram_ConnectorNavTable, type function (url as Uri.Type) as any);
+
+DefaultRequestHeaders = [
+    #"Accept" = "application/json;odata.metadata=minimal",  // column name and values only
+    #"OData-MaxVersion" = "4.0"                             // we only support v4
+];
+
+BaseUrl = "https://api.instagram.com/v1/users/";
+
+RootEntities = {
+    "self/?access_token=ACCESS-TOKEN",
+    "self/media/recent/?access_token=ACCESS-TOKEN"
+};
+
+
+Instagram_ConnectorImpl = (url as text) =>
+    let
+        source = Web.Contents(url, [ Headers = DefaultRequestHeaders ]),
+        json = Json.Document(source)
+    in
+        json;
+
+Instagram_ConnectorNavTable = (url as text) as table =>
+    let
+        source = #table({"Name", "Data", "ItemKind", "ItemName", "IsLeaf"}, {
+            { "NOMBRE-DESEADO-PARA-LA-TABLA-DE-INFORMACION-DEL-USUARIO", GetUserInfoTable(url), "Table", "Table", true },
+            { "NOMBRE-DESEADO-PARA-LA-TABLA-DE-INFORMACION-DE-INFORMACION-RECIENTE", GetRecentMediaTable(url), "Table", "Table", true }
+        }),
+        navTable = Table.ToNavigationTable(source, {"Name"}, "Name", "Data", "ItemKind", "ItemName", "IsLeaf")
+    in
+        navTable;
+
+GetUserInfoTable = (url as text) as table =>
+let
+    Source = Instagram_Connector.Feed("https://api.instagram.com/v1/users/self/?access_token=5498426574.17ca3fc.b36abb69035c46ccab7c0a244212282c"),
+    //TODAS-LAS-TRANSFORMACIONES-QUE-SE-REALIZARON-A-PARTIR-DE-Source;
+
+GetRecentMediaTable = (url as text) as table =>
+let
+    Source = Instagram_Connector.Feed("https://api.instagram.com/v1/users/self/media/recent/?access_token=5498426574.17ca3fc.b36abb69035c46ccab7c0a244212282c"),
+    // TODAS-LAS-TRANSFORMACIONES-QUE-SE-REALIZARON-A-PARTIR-DE-Source;
+
+
+Table.ToNavigationTable = (
+    table as table,
+    keyColumns as list,
+    nameColumn as text,
+    dataColumn as text,
+    itemKindColumn as text,
+    itemNameColumn as text,
+    isLeafColumn as text
+) as table =>
+    let
+        tableType = Value.Type(table),
+        newTableType = Type.AddTableKey(tableType, keyColumns, true) meta 
+        [
+            NavigationTable.NameColumn = nameColumn, 
+            NavigationTable.DataColumn = dataColumn,
+            NavigationTable.ItemKindColumn = itemKindColumn, 
+            Preview.DelayColumn = itemNameColumn, 
+            NavigationTable.IsLeafColumn = isLeafColumn
+        ],
+        navigationTable = Value.ReplaceType(table, newTableType)
+    in
+        navigationTable;
